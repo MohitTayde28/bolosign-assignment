@@ -5,38 +5,30 @@ const path = require("path");
 const { PDFDocument } = require("pdf-lib");
 
 const app = express();
-
-// ================== MIDDLEWARE ==================
 app.use(cors());
 app.use(express.json({ limit: "20mb" }));
 
-// ================== HEALTH CHECK (IMPORTANT) ==================
+// ✅ HEALTH CHECK (VERY IMPORTANT)
 app.get("/", (req, res) => {
   res.send("Backend is running 🚀");
 });
 
-// ================== SERVE UPLOADS ==================
+// serve uploads
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
-// ================== SIGN PDF API ==================
 app.post("/sign-pdf", async (req, res) => {
   try {
     const { pdfBase64, signatureBase64, box } = req.body;
 
-    // Decode PDF
     const pdfBytes = Buffer.from(pdfBase64, "base64");
-
-    // Decode signature image
     const sigBytes = Buffer.from(
       signatureBase64.replace(/^data:image\/\w+;base64,/, ""),
       "base64"
     );
 
-    // Load PDF
     const pdfDoc = await PDFDocument.load(pdfBytes);
     const page = pdfDoc.getPages()[0];
 
-    // Embed signature image
     let sigImg;
     try {
       sigImg = await pdfDoc.embedPng(sigBytes);
@@ -44,7 +36,6 @@ app.post("/sign-pdf", async (req, res) => {
       sigImg = await pdfDoc.embedJpg(sigBytes);
     }
 
-    // Aspect-ratio safe draw
     const imgDims = sigImg.scale(1);
     const scale = Math.min(
       box.width / imgDims.width,
@@ -61,24 +52,20 @@ app.post("/sign-pdf", async (req, res) => {
       height: drawH,
     });
 
-    // Save signed PDF
     const outBytes = await pdfDoc.save();
     const outPath = path.join(__dirname, "../uploads/signed.pdf");
-
     fs.writeFileSync(outPath, outBytes);
 
-    // IMPORTANT: use dynamic host (Render-safe)
     res.json({
-      message: "PDF signed successfully",
-      url: `/uploads/signed.pdf`,
+      url: `${req.protocol}://${req.get("host")}/uploads/signed.pdf`,
     });
-  } catch (error) {
-    console.error(error);
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Signing failed" });
   }
 });
 
-// ================== START SERVER ==================
+// 🔑 THIS IS THE FIX
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
