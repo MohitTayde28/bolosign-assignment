@@ -5,28 +5,38 @@ const path = require("path");
 const { PDFDocument } = require("pdf-lib");
 
 const app = express();
+
+// ================== MIDDLEWARE ==================
 app.use(cors());
 app.use(express.json({ limit: "20mb" }));
 
-// serve uploads
+// ================== HEALTH CHECK (IMPORTANT) ==================
+app.get("/", (req, res) => {
+  res.send("Backend is running 🚀");
+});
+
+// ================== SERVE UPLOADS ==================
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
+// ================== SIGN PDF API ==================
 app.post("/sign-pdf", async (req, res) => {
   try {
     const { pdfBase64, signatureBase64, box } = req.body;
 
-    // decode inputs
+    // Decode PDF
     const pdfBytes = Buffer.from(pdfBase64, "base64");
+
+    // Decode signature image
     const sigBytes = Buffer.from(
       signatureBase64.replace(/^data:image\/\w+;base64,/, ""),
       "base64"
     );
 
-    // load pdf
+    // Load PDF
     const pdfDoc = await PDFDocument.load(pdfBytes);
     const page = pdfDoc.getPages()[0];
 
-    // embed image (PNG or JPG both ok)
+    // Embed signature image
     let sigImg;
     try {
       sigImg = await pdfDoc.embedPng(sigBytes);
@@ -34,7 +44,7 @@ app.post("/sign-pdf", async (req, res) => {
       sigImg = await pdfDoc.embedJpg(sigBytes);
     }
 
-    // draw with aspect-ratio safety
+    // Aspect-ratio safe draw
     const imgDims = sigImg.scale(1);
     const scale = Math.min(
       box.width / imgDims.width,
@@ -51,18 +61,26 @@ app.post("/sign-pdf", async (req, res) => {
       height: drawH,
     });
 
-    // save
+    // Save signed PDF
     const outBytes = await pdfDoc.save();
     const outPath = path.join(__dirname, "../uploads/signed.pdf");
+
     fs.writeFileSync(outPath, outBytes);
 
-    res.json({ url: "http://localhost:5000/uploads/signed.pdf" });
-  } catch (e) {
-    console.error(e);
+    // IMPORTANT: use dynamic host (Render-safe)
+    res.json({
+      message: "PDF signed successfully",
+      url: `/uploads/signed.pdf`,
+    });
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ error: "Signing failed" });
   }
 });
 
-app.listen(5000, () =>
-  console.log("Backend running on http://localhost:5000")
-);
+// ================== START SERVER ==================
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, () => {
+  console.log(`Backend running on port ${PORT}`);
+});
